@@ -1,0 +1,45 @@
+# Dev Slack config — Carlo's personal Gmail + Slack workspace for testing
+# Uses Socket Mode (no public URL needed)
+
+client:
+  name: "Dev Testing — Slack"
+  region: "EU"
+
+model: "claude-haiku-4-5"  # Use Haiku for cheap testing, switch to sonnet/opus for quality
+
+email:
+  provider: "gmail"
+  user_email: "${GMAIL_USER_EMAIL}"
+  credentials_path: "./secrets/credentials.json"
+  token_path: "./secrets/gmail_token.json"
+
+hitl:
+  channel: "slack"
+  slack_bot_token: "${SLACK_BOT_TOKEN}"       # xoxb-... (Bot User OAuth Token)
+  slack_app_token: "${SLACK_APP_TOKEN}"       # xapp-... (Socket Mode token)
+  slack_channel_id: "${SLACK_CHANNEL_ID}"     # C... (channel for notifications + approvals)
+  autonomy_level: "supervised"
+  value_threshold: 5000
+  always_approve_breakup: true
+
+crm:
+  provider: "none"
+
+storage:
+  db_path: "./data/dev_slack_tracker.db"
+
+voice:
+  tone: "professional, warm, direct"
+  language: "English"
+  company_context: "We are an AI agency helping European SMBs automate their workflows."
+  user_name: "Carlo"
+  company_name: "AI Agency"
+
+follow_up:
+  schedule:
+    - { number: 1, day_offset: 3,  template: "gentle_check_in" }
+    - { number: 2, day_offset: 7,  template: "add_value" }
+    - { number: 3, day_offset: 14, template: "create_urgency" }
+    - { number: 4, day_offset: 21, template: "graceful_close" }
+  check_interval_hours: 2
+  max_follow_ups: 4

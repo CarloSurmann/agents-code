@@ -1,0 +1,21 @@
+# Secrets — NEVER commit
+secrets/
+*.json
+!deployments/*.yaml
+.env
+
+# Data
+data/
+*.db
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/

@@ -1,0 +1,19 @@
+# Core
+anthropic>=0.40.0          # Claude API + Agent SDK
+pyyaml>=6.0                # YAML config parsing
+python-dotenv>=1.0.0       # Load .env file into environment
+
+# Gmail API
+google-api-python-client>=2.100.0
+google-auth-oauthlib>=1.2.0
+google-auth-httplib2>=0.2.0
+
+# Slack bot
+slack-bolt>=1.20.0         # Slack event handling, interactions, modals
+slack-sdk>=3.30.0          # Slack API client
+
+# Scheduling
+apscheduler>=3.10.0        # Background cron scheduler
+
+# Google Sheets dashboard sync (optional — Phase 4)
+# gspread>=6.0.0

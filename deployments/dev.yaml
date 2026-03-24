@@ -1,0 +1,42 @@
+# Dev config — Carlo's personal Gmail for testing
+# Sends follow-ups from Carlo's account to Giovanni's email
+
+client:
+  name: "Dev Testing (Carlo)"
+  region: "EU"
+
+model: "claude-sonnet-4-20250514"
+
+email:
+  provider: "gmail"
+  user_email: "${GMAIL_USER_EMAIL}"           # Carlo's Gmail address
+  credentials_path: "./secrets/credentials.json"  # OAuth2 client credentials from Google Cloud
+  token_path: "./secrets/gmail_token.json"        # Auto-generated after first OAuth flow
+
+hitl:
+  channel: "console"                  # Console-based for local testing
+  autonomy_level: "supervised"        # Approve everything during testing
+  value_threshold: 5000
+  always_approve_breakup: true
+
+crm:
+  provider: "none"                    # No CRM for testing
+
+storage:
+  db_path: "./data/dev_tracker.db"
+
+voice:
+  tone: "professional, warm, direct"
+  language: "English"
+  company_context: "We are an AI agency helping European SMBs automate their workflows."
+  user_name: "Carlo"
+  company_name: "AI Agency"
+
+follow_up:
+  schedule:
+    - { number: 1, day_offset: 3,  template: "gentle_check_in" }
+    - { number: 2, day_offset: 7,  template: "add_value" }
+    - { number: 3, day_offset: 14, template: "create_urgency" }
+    - { number: 4, day_offset: 21, template: "graceful_close" }
+  check_interval_hours: 2
+  max_follow_ups: 4
