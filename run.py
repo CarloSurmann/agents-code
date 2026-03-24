@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Email Follow-Up Agent — Runner Script.
+Email Follow-Up Agent — Runner Script (Console / CLI).
 
 Usage:
     # Run full cycle (scan + check + follow-up):
@@ -12,8 +12,10 @@ Usage:
     python run.py --config deployments/dev.yaml --phase followup
     python run.py --config deployments/dev.yaml --phase stats
 
-    # Interactive mode (ask the agent anything):
+    # Interactive mode (chat with the agent):
     python run.py --config deployments/dev.yaml --interactive
+
+Aligned: uses ConsoleChannel for HITL when running in terminal.
 """
 
 import argparse
@@ -22,14 +24,13 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-# Add code/ to Python path
 CODE_DIR = Path(__file__).parent
 sys.path.insert(0, str(CODE_DIR))
 
-# Load .env file BEFORE any imports that need env vars
 from dotenv import load_dotenv
 load_dotenv(CODE_DIR / ".env")
 
+from agency.channels.console import ConsoleChannel
 from agents.email_follow_up import create_agent
 
 
@@ -40,7 +41,6 @@ def setup_logging(verbose: bool = False):
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
         datefmt="%H:%M:%S",
     )
-    # Quiet down noisy libraries
     logging.getLogger("googleapiclient").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
@@ -116,13 +116,15 @@ def main():
     setup_logging(args.verbose)
     logger = logging.getLogger("runner")
 
-    # Create agent
+    # Console channel for HITL in terminal mode
+    console = ConsoleChannel()
+
+    # Create agent with Console HITL
     logger.info(f"Loading config: {args.config}")
-    agent, config = create_agent(args.config)
+    agent, config = create_agent(args.config, channel=console)
     logger.info(f"Agent ready: {agent.name} (model: {config.model})")
 
     if args.interactive:
-        # Interactive mode
         print(f"\n  Email Follow-Up Agent — Interactive Mode")
         print(f"  Client: {config.client_name}")
         print(f"  Email: {config.email.user_email}")
@@ -137,14 +139,13 @@ def main():
                     continue
 
                 result = agent.run(user_input)
-                print(f"\nAgent: {result.text}")
+                print(f"\nAgent: {result.output}")
                 print(f"  [{result.iterations} iterations, {result.total_input_tokens + result.total_output_tokens} tokens]\n")
 
             except KeyboardInterrupt:
                 print("\nExiting.")
                 break
     else:
-        # Phase-based execution
         since = datetime.now() - timedelta(hours=args.since_hours)
         since_iso = since.isoformat()
 
@@ -171,14 +172,12 @@ def main():
         print(f"\n{'─' * 60}")
         print(f"AGENT REPORT:")
         print(f"{'─' * 60}")
-        print(result.text)
+        print(result.output)
         print(f"{'─' * 60}")
         print(f"  Iterations: {result.iterations}")
         print(f"  Tokens: {result.total_input_tokens} in / {result.total_output_tokens} out")
-        print(f"  Tool calls: {len(result.tool_calls_made)}")
-        for tc in result.tool_calls_made:
-            status = "ERROR" if tc["is_error"] else "OK"
-            print(f"    • {tc['tool']} [{status}]")
+        if result.trace_file:
+            print(f"  Trace: {result.trace_file}")
         print()
 
 

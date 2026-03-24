@@ -1,89 +1,81 @@
+"""Core Agent class — agentic loop with swappable LLM backend.
+
+Supports two backends:
+- "ollama/<model>" — local Ollama for development (free, fast, no API key)
+- "claude-sonnet-4-6" etc. — Anthropic API for production
+
+The Agent handles the agentic loop (observe -> decide -> act -> repeat)
+using native tool_use protocol. You provide tools, skills, and hooks;
+the Agent wires them together and runs the loop.
+
+Tools:   Python functions the agent can call (actions in the world)
+Skills:  Markdown files loaded into the system prompt (knowledge + instructions)
+Hooks:   Your code that runs before/after tool calls (HITL, logging, etc.)
 """
-Agent — The core agentic loop with hook system.
 
-Wraps the Anthropic Python SDK to provide:
-- Automatic Python function → tool schema conversion
-- PreToolUse / PostToolUse hooks (for HITL gating, logging, etc.)
-- Cost tracking across iterations
-- Structured result handling
+from __future__ import annotations
 
-Design: Giovanni's architecture (2026-03-24 session).
-The agent loop is: observe → think → act → observe result → repeat.
-"""
-
-import json
-import time
 import inspect
+import json
 import logging
-from typing import Any, Callable
 from dataclasses import dataclass, field
+from typing import Any, Callable
 
-import anthropic
+from agency.skills import load_skills
+from agency.tracing import Tracer, NullTracer
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Type mappings: Python types -> JSON Schema types
+# ---------------------------------------------------------------------------
 
-@dataclass
-class ToolResult:
-    """Result from executing a tool."""
-    tool_use_id: str
-    output: str
-    is_error: bool = False
-
-
-@dataclass
-class AgentResult:
-    """Final result from an agent run."""
-    text: str
-    tool_calls_made: list[dict] = field(default_factory=list)
-    total_input_tokens: int = 0
-    total_output_tokens: int = 0
-    iterations: int = 0
+_TYPE_MAP = {
+    str: "string",
+    int: "integer",
+    float: "number",
+    bool: "boolean",
+    list: "array",
+    dict: "object",
+}
 
 
-def python_function_to_tool_schema(func: Callable) -> dict:
+# ---------------------------------------------------------------------------
+# Tool schema generation
+# ---------------------------------------------------------------------------
+
+def _function_to_tool_schema(func: Callable) -> dict:
+    """Convert a Python function into a tool schema.
+
+    Uses the function's name, docstring, type hints, and default values
+    to build the schema automatically.
     """
-    Auto-convert a Python function into an Anthropic tool schema.
+    hints = {}
+    try:
+        hints = inspect.get_annotations(func, eval_str=True)
+    except Exception:
+        hints = getattr(func, "__annotations__", {})
 
-    Uses type hints and docstring to build the schema.
-    The function's docstring becomes the tool description.
-    Type hints become JSON Schema types.
-    """
-    hints = func.__annotations__
     sig = inspect.signature(func)
-
-    # Map Python types to JSON Schema types
-    type_map = {
-        str: "string",
-        int: "integer",
-        float: "number",
-        bool: "boolean",
-        list: "array",
-        dict: "object",
-    }
 
     properties = {}
     required = []
 
-    for param_name, param in sig.parameters.items():
-        if param_name == "self":
-            continue
+    for name, param in sig.parameters.items():
+        python_type = hints.get(name, str)
+        json_type = _TYPE_MAP.get(python_type, "string")
+        prop: dict[str, Any] = {"type": json_type}
 
-        python_type = hints.get(param_name, str)
-        json_type = type_map.get(python_type, "string")
+        if param.default is not inspect.Parameter.empty:
+            prop["description"] = f"Default: {param.default}"
+        else:
+            required.append(name)
 
-        properties[param_name] = {
-            "type": json_type,
-            "description": f"Parameter: {param_name}",
-        }
-
-        # If no default value, it's required
-        if param.default is inspect.Parameter.empty:
-            required.append(param_name)
+        properties[name] = prop
 
     return {
         "name": func.__name__,
-        "description": (func.__doc__ or f"Tool: {func.__name__}").strip(),
+        "description": (inspect.getdoc(func) or "").strip(),
         "input_schema": {
             "type": "object",
             "properties": properties,
@@ -92,264 +84,443 @@ def python_function_to_tool_schema(func: Callable) -> dict:
     }
 
 
-class Agent:
-    """
-    The core agent class. Runs the agentic loop with hooks.
+# ---------------------------------------------------------------------------
+# Hook protocol
+# ---------------------------------------------------------------------------
 
-    Usage:
-        agent = Agent(
-            name="email-follow-up",
-            model="claude-sonnet-4-20250514",
-            system_prompt="You are an email follow-up agent...",
-            tools=[watch_sent_folder, check_thread_for_reply, ...],
-            hooks={"pre_tool_use": {"send_reply": hitl_hook}, "post_tool_use": {"*": logger_hook}},
+@dataclass
+class ToolCall:
+    """Represents a tool call the agent wants to make."""
+    name: str
+    input: dict[str, Any]
+    tool_use_id: str
+
+
+class Hook:
+    """Base class for hooks. Subclass and override the methods you need."""
+
+    def pre_tool_use(self, tool_call: ToolCall) -> bool:
+        """Called before a tool executes. Return False to block it."""
+        return True
+
+    def post_tool_use(self, tool_call: ToolCall, result: Any) -> None:
+        """Called after a tool executes. Use for logging, tracing, etc."""
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Agent result
+# ---------------------------------------------------------------------------
+
+@dataclass
+class AgentResult:
+    """What the agent returns after a run."""
+    output: str = ""
+    tool_calls: list[dict] = field(default_factory=list)
+    messages: list[dict] = field(default_factory=list)
+    cost_usd: float = 0.0
+    iterations: int = 0
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    trace_file: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# LLM Backends
+# ---------------------------------------------------------------------------
+
+class _AnthropicBackend:
+    """Production backend — calls Claude via Anthropic API."""
+
+    def __init__(self, model: str):
+        import anthropic
+        self.model = model
+        self.client = anthropic.Anthropic()
+
+    def chat(self, system: str, messages: list, tools: list) -> dict:
+        response = self.client.messages.create(
+            model=self.model,
+            system=system,
+            messages=messages,
+            tools=tools,
+            max_tokens=4096,
         )
-        result = agent.run("Check for new sent emails and process follow-ups")
+        return self._normalize(response)
+
+    def _normalize(self, response) -> dict:
+        """Convert Anthropic response to our common format."""
+        content = []
+        for block in response.content:
+            if hasattr(block, "text"):
+                content.append({"type": "text", "text": block.text})
+            elif block.type == "tool_use":
+                content.append({
+                    "type": "tool_use",
+                    "id": block.id,
+                    "name": block.name,
+                    "input": block.input,
+                })
+
+        cost = 0.0
+        input_tokens = 0
+        output_tokens = 0
+        if hasattr(response, "usage"):
+            input_tokens = response.usage.input_tokens
+            output_tokens = response.usage.output_tokens
+            input_cost = (input_tokens / 1_000_000) * 3.0
+            output_cost = (output_tokens / 1_000_000) * 15.0
+            cost = input_cost + output_cost
+
+        return {
+            "content": content,
+            "stop_reason": response.stop_reason,
+            "cost": cost,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+        }
+
+
+class _OllamaBackend:
+    """Dev backend — calls local Ollama. Free, no API key needed.
+
+    Ollama doesn't natively support Anthropic's tool_use protocol, so we
+    inject tool descriptions into the system prompt and parse JSON tool
+    calls from the model's text output.
+    """
+
+    def __init__(self, model: str):
+        import httpx
+        self.model = model
+        self.base_url = "http://localhost:11434"
+        self._httpx = httpx
+
+    def chat(self, system: str, messages: list, tools: list) -> dict:
+        # Inject tool descriptions into system prompt
+        tool_instructions = self._build_tool_prompt(tools)
+        full_system = f"{system}\n\n{tool_instructions}"
+
+        # Convert messages to Ollama format
+        ollama_messages = [{"role": "system", "content": full_system}]
+        for msg in messages:
+            if msg["role"] == "assistant":
+                # Extract text from content blocks
+                text = self._extract_text(msg["content"])
+                if text:
+                    ollama_messages.append({"role": "assistant", "content": text})
+            elif msg["role"] == "user":
+                if isinstance(msg["content"], str):
+                    ollama_messages.append({"role": "user", "content": msg["content"]})
+                elif isinstance(msg["content"], list):
+                    # Tool results — format them as text
+                    parts = []
+                    for item in msg["content"]:
+                        if isinstance(item, dict) and item.get("type") == "tool_result":
+                            parts.append(f"Tool result: {item.get('content', '')}")
+                    if parts:
+                        ollama_messages.append({"role": "user", "content": "\n".join(parts)})
+
+        response = self._httpx.post(
+            f"{self.base_url}/api/chat",
+            json={"model": self.model, "messages": ollama_messages, "stream": False},
+            timeout=120.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        return self._parse_response(data.get("message", {}).get("content", ""))
+
+    def _build_tool_prompt(self, tools: list) -> str:
+        if not tools:
+            return ""
+
+        lines = [
+            "## Available Tools",
+            "You can call tools by responding with a JSON block like this:",
+            '```json\n{"tool": "tool_name", "input": {"param": "value"}}\n```',
+            "",
+            "IMPORTANT: When you want to call a tool, respond ONLY with the JSON block, nothing else.",
+            "When you are done and have no more tools to call, respond with regular text.",
+            "",
+            "Tools:",
+        ]
+        for t in tools:
+            params = t["input_schema"].get("properties", {})
+            param_list = ", ".join(f"{k}: {v.get('type', 'string')}" for k, v in params.items())
+            lines.append(f"- **{t['name']}**({param_list}): {t['description']}")
+
+        return "\n".join(lines)
+
+    def _extract_text(self, content) -> str:
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts = []
+            for block in content:
+                if isinstance(block, dict):
+                    if block.get("type") == "text":
+                        parts.append(block["text"])
+                    elif block.get("type") == "tool_use":
+                        parts.append(json.dumps({"tool": block["name"], "input": block["input"]}))
+            return "\n".join(parts)
+        return str(content)
+
+    def _parse_response(self, text: str) -> dict:
+        """Try to parse tool calls from the model's text output."""
+        # Try to find JSON tool call in the response
+        tool_call = self._extract_json_tool_call(text)
+
+        if tool_call:
+            return {
+                "content": [{
+                    "type": "tool_use",
+                    "id": f"ollama_{id(text)}",
+                    "name": tool_call["tool"],
+                    "input": tool_call.get("input", {}),
+                }],
+                "stop_reason": "tool_use",
+                "cost": 0.0,
+            }
+        else:
+            return {
+                "content": [{"type": "text", "text": text}],
+                "stop_reason": "end_turn",
+                "cost": 0.0,
+            }
+
+    def _extract_json_tool_call(self, text: str) -> dict | None:
+        """Extract a JSON tool call from model output."""
+        # Try the whole text as JSON first
+        cleaned = text.strip()
+
+        # Strip markdown code fences if present
+        if cleaned.startswith("```"):
+            lines = cleaned.split("\n")
+            # Remove first line (```json or ```) and last line (```)
+            inner_lines = []
+            started = False
+            for line in lines:
+                if not started and line.strip().startswith("```"):
+                    started = True
+                    continue
+                if started and line.strip() == "```":
+                    break
+                if started:
+                    inner_lines.append(line)
+            cleaned = "\n".join(inner_lines).strip()
+
+        try:
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, dict) and "tool" in parsed:
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+        # Try to find JSON embedded in text
+        for start_char in ["{", "["]:
+            idx = text.find(start_char)
+            if idx == -1:
+                continue
+            # Find matching closing bracket
+            depth = 0
+            for i in range(idx, len(text)):
+                if text[i] in "{[":
+                    depth += 1
+                elif text[i] in "}]":
+                    depth -= 1
+                if depth == 0:
+                    try:
+                        parsed = json.loads(text[idx:i + 1])
+                        if isinstance(parsed, dict) and "tool" in parsed:
+                            return parsed
+                    except json.JSONDecodeError:
+                        pass
+                    break
+
+        return None
+
+
+def _create_backend(model: str):
+    """Create the right backend based on model string."""
+    if model.startswith("ollama/"):
+        ollama_model = model[len("ollama/"):]
+        return _OllamaBackend(ollama_model)
+    else:
+        return _AnthropicBackend(model)
+
+
+# ---------------------------------------------------------------------------
+# Agent
+# ---------------------------------------------------------------------------
+
+class Agent:
+    """An agent that uses an LLM to decide which tools to call.
+
+    Example:
+        # Dev mode (free, local)
+        agent = Agent(name="test", model="ollama/qwen3.5:9b", tools=[...])
+
+        # Production (Claude API)
+        agent = Agent(name="test", model="claude-sonnet-4-6", tools=[...])
     """
 
     def __init__(
         self,
         name: str,
-        model: str = "claude-sonnet-4-20250514",
         system_prompt: str = "",
         tools: list[Callable] | None = None,
-        hooks: dict | None = None,
+        skills: list[str] | None = None,
+        skills_dir: str | None = None,
+        hooks: list[Hook] | None = None,
+        model: str = "ollama/qwen3.5:9b",
         max_iterations: int = 20,
-        api_key: str | None = None,
-        tracer=None,
+        tracer: Tracer | None = None,
     ):
         self.name = name
         self.model = model
-        self.system_prompt = system_prompt
         self.max_iterations = max_iterations
-        self.tracer = tracer  # Optional Tracer instance for observability
 
-        # Anthropic client
-        self.client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
+        # LLM backend (Ollama or Anthropic)
+        self._backend = _create_backend(model)
 
-        # Tools: store both the schemas (for API) and the callables (for execution)
-        self._tool_functions: dict[str, Callable] = {}
+        # Register tools
+        self._tool_fns: dict[str, Callable] = {}
         self._tool_schemas: list[dict] = []
+        for func in tools or []:
+            schema = _function_to_tool_schema(func)
+            self._tool_fns[schema["name"]] = func
+            self._tool_schemas.append(schema)
 
-        if tools:
-            for func in tools:
-                schema = python_function_to_tool_schema(func)
-                self._tool_schemas.append(schema)
-                self._tool_functions[func.__name__] = func
-
-        # Hooks: {"pre_tool_use": {"tool_name": hook_fn}, "post_tool_use": {"*": hook_fn}}
-        self._hooks = hooks or {}
-
-    def _fire_pre_hook(self, tool_name: str, tool_input: dict) -> dict | None:
-        """
-        Fire PreToolUse hook. Returns None to proceed, or a dict to override/skip.
-
-        The hook can return:
-        - None → proceed with tool execution
-        - {"skip": True} → skip this tool call
-        - {"override_input": {...}} → use modified input
-        - {"cancel": True, "reason": "..."} → cancel and return reason
-        """
-        pre_hooks = self._hooks.get("pre_tool_use", {})
-
-        # Check for specific hook on this tool
-        hook = pre_hooks.get(tool_name)
-        if not hook:
-            # Check for wildcard hook
-            hook = pre_hooks.get("*")
-
-        if hook:
-            try:
-                return hook(tool_name, tool_input)
-            except Exception as e:
-                logger.error(f"PreToolUse hook error for {tool_name}: {e}")
-
-        return None
-
-    def _fire_post_hook(self, tool_name: str, tool_input: dict, result: str, duration_ms: float):
-        """Fire PostToolUse hook for logging/tracing."""
-        post_hooks = self._hooks.get("post_tool_use", {})
-
-        hook = post_hooks.get(tool_name) or post_hooks.get("*")
-
-        if hook:
-            try:
-                hook(tool_name, tool_input, result, duration_ms)
-            except Exception as e:
-                logger.error(f"PostToolUse hook error for {tool_name}: {e}")
-
-    def _execute_tool(self, tool_name: str, tool_input: dict) -> ToolResult:
-        """Execute a tool with pre/post hooks."""
-
-        # --- PreToolUse Hook ---
-        pre_result = self._fire_pre_hook(tool_name, tool_input)
-
-        if pre_result:
-            if pre_result.get("skip"):
-                return ToolResult(
-                    tool_use_id="",  # Will be set by caller
-                    output="[Skipped by user]",
-                )
-            if pre_result.get("cancel"):
-                return ToolResult(
-                    tool_use_id="",
-                    output=f"[Cancelled: {pre_result.get('reason', 'No reason given')}]",
-                )
-            if "override_input" in pre_result:
-                tool_input = pre_result["override_input"]
-
-        # --- Execute ---
-        func = self._tool_functions.get(tool_name)
-        if not func:
-            return ToolResult(
-                tool_use_id="",
-                output=f"Error: Unknown tool '{tool_name}'",
-                is_error=True,
-            )
-
-        start = time.time()
-        try:
-            result = func(**tool_input)
-            output = json.dumps(result) if not isinstance(result, str) else result
-            is_error = False
-        except Exception as e:
-            output = f"Error executing {tool_name}: {str(e)}"
-            is_error = True
-            logger.error(output)
-
-        duration_ms = (time.time() - start) * 1000
-
-        # --- PostToolUse Hook ---
-        self._fire_post_hook(tool_name, tool_input, output, duration_ms)
-
-        return ToolResult(tool_use_id="", output=output, is_error=is_error)
-
-    def run(self, user_message: str) -> AgentResult:
-        """
-        Run the agent loop.
-
-        Sends the user message to Claude with available tools.
-        If Claude calls tools, executes them and loops back.
-        Continues until Claude returns a final text response or max iterations hit.
-        """
-        messages = [{"role": "user", "content": user_message}]
-
-        total_input_tokens = 0
-        total_output_tokens = 0
-        tool_calls_made = []
-
-        for iteration in range(self.max_iterations):
-            logger.info(f"[{self.name}] Iteration {iteration + 1}/{self.max_iterations}")
-
-            # Build API request
-            kwargs = {
-                "model": self.model,
-                "max_tokens": 4096,
-                "messages": messages,
-            }
-
-            if self.system_prompt:
-                kwargs["system"] = self.system_prompt
-
-            if self._tool_schemas:
-                kwargs["tools"] = self._tool_schemas
-
-            # Call Claude
-            call_start = time.time()
-            try:
-                response = self.client.messages.create(**kwargs)
-            except anthropic.APIError as e:
-                logger.error(f"[{self.name}] API error: {e}")
-                return AgentResult(
-                    text=f"API error: {str(e)}",
-                    tool_calls_made=tool_calls_made,
-                    total_input_tokens=total_input_tokens,
-                    total_output_tokens=total_output_tokens,
-                    iterations=iteration + 1,
-                )
-            call_latency = (time.time() - call_start) * 1000
-
-            # Track usage
-            total_input_tokens += response.usage.input_tokens
-            total_output_tokens += response.usage.output_tokens
-
-            # Record in tracer
-            if self.tracer:
-                tool_names_this_call = [
-                    b.name for b in response.content if b.type == "tool_use"
-                ]
-                cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
-                cache_write = getattr(response.usage, "cache_creation_input_tokens", 0) or 0
-                self.tracer.record_api_call(
-                    input_tokens=response.usage.input_tokens,
-                    output_tokens=response.usage.output_tokens,
-                    cache_read_tokens=cache_read,
-                    cache_write_tokens=cache_write,
-                    latency_ms=call_latency,
-                    stop_reason=response.stop_reason,
-                    tool_calls=tool_names_this_call,
-                )
-
-            # Check stop reason
-            if response.stop_reason == "end_turn":
-                # Claude is done — extract final text
-                final_text = ""
-                for block in response.content:
-                    if hasattr(block, "text"):
-                        final_text += block.text
-
-                return AgentResult(
-                    text=final_text,
-                    tool_calls_made=tool_calls_made,
-                    total_input_tokens=total_input_tokens,
-                    total_output_tokens=total_output_tokens,
-                    iterations=iteration + 1,
-                )
-
-            if response.stop_reason == "tool_use":
-                # Claude wants to use tools — execute them
-                messages.append({"role": "assistant", "content": response.content})
-
-                tool_results = []
-                for block in response.content:
-                    if block.type == "tool_use":
-                        logger.info(f"[{self.name}] Tool call: {block.name}({json.dumps(block.input)[:200]})")
-
-                        result = self._execute_tool(block.name, block.input)
-                        result.tool_use_id = block.id
-
-                        tool_calls_made.append({
-                            "tool": block.name,
-                            "input": block.input,
-                            "output": result.output[:500],
-                            "is_error": result.is_error,
-                        })
-
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": result.output,
-                            **({"is_error": True} if result.is_error else {}),
-                        })
-
-                messages.append({"role": "user", "content": tool_results})
-            else:
-                # Unexpected stop reason
-                logger.warning(f"[{self.name}] Unexpected stop_reason: {response.stop_reason}")
-                return AgentResult(
-                    text=f"Unexpected stop: {response.stop_reason}",
-                    tool_calls_made=tool_calls_made,
-                    total_input_tokens=total_input_tokens,
-                    total_output_tokens=total_output_tokens,
-                    iterations=iteration + 1,
-                )
-
-        # Max iterations reached
-        logger.warning(f"[{self.name}] Max iterations ({self.max_iterations}) reached")
-        return AgentResult(
-            text="Max iterations reached — agent stopped.",
-            tool_calls_made=tool_calls_made,
-            total_input_tokens=total_input_tokens,
-            total_output_tokens=total_output_tokens,
-            iterations=self.max_iterations,
+        # Build system prompt: base prompt + date context + loaded skills
+        from datetime import datetime
+        date_context = (
+            f"## Current Date and Time\n"
+            f"Today is {datetime.now().strftime('%A, %B %d, %Y')} "
+            f"({datetime.now().strftime('%Y-%m-%d')}). "
+            f"Current time: {datetime.now().strftime('%H:%M')} local time.\n"
+            f"Use this for any date calculations — never ask the user for today's date."
         )
+        skill_content = load_skills(skills or [], skills_dir=skills_dir)
+        parts = [p for p in [system_prompt, date_context, skill_content] if p]
+        self._system_prompt = "\n\n".join(parts)
+
+        # Hooks
+        self._hooks = hooks or []
+
+        # Tracing
+        self._tracer = tracer or NullTracer()
+
+    def run(self, task: str) -> AgentResult:
+        """Run the agentic loop until the model stops or we hit max iterations."""
+        messages: list[dict] = [{"role": "user", "content": task}]
+        result = AgentResult()
+
+        self._tracer.start_run(self.name, task, self.model)
+
+        for i in range(self.max_iterations):
+            result.iterations = i + 1
+            logger.info(f"[{self.name}] iteration {i + 1}")
+
+            # Call LLM
+            self._tracer.log_event("llm_call", {"iteration": i + 1})
+            response = self._backend.chat(
+                system=self._system_prompt,
+                messages=messages,
+                tools=self._tool_schemas,
+            )
+            result.cost_usd += response.get("cost", 0.0)
+            result.total_input_tokens += response.get("input_tokens", 0)
+            result.total_output_tokens += response.get("output_tokens", 0)
+
+            # Build assistant message for history
+            messages.append({"role": "assistant", "content": response["content"]})
+
+            # If the model is done (no tool calls), extract final text
+            if response["stop_reason"] == "end_turn":
+                for block in response["content"]:
+                    if block.get("type") == "text":
+                        result.output += block["text"]
+                self._tracer.log_event("end_turn", {"output_length": len(result.output)})
+                break
+
+            # Process tool calls
+            tool_results = []
+            for block in response["content"]:
+                if block.get("type") != "tool_use":
+                    continue
+
+                tool_call = ToolCall(
+                    name=block["name"],
+                    input=block["input"],
+                    tool_use_id=block["id"],
+                )
+
+                self._tracer.log_event("tool_call_start", {
+                    "tool": block["name"],
+                    "input": block["input"],
+                })
+
+                # --- Pre-tool hooks ---
+                approved = True
+                for hook in self._hooks:
+                    if not hook.pre_tool_use(tool_call):
+                        approved = False
+                        logger.info(f"[{self.name}] tool '{block['name']}' blocked by hook")
+                        break
+
+                if not approved:
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block["id"],
+                        "content": "Action was rejected by human reviewer.",
+                    })
+                    result.tool_calls.append({
+                        "tool": block["name"],
+                        "input": block["input"],
+                        "result": "REJECTED",
+                    })
+                    self._tracer.log_event("tool_rejected", {"tool": block["name"]})
+                    continue
+
+                # --- Execute the tool ---
+                fn = self._tool_fns.get(block["name"])
+                if fn is None:
+                    tool_output = f"Error: unknown tool '{block['name']}'"
+                else:
+                    try:
+                        tool_output = fn(**block["input"])
+                    except Exception as e:
+                        tool_output = f"Error: {e}"
+                        logger.exception(f"[{self.name}] tool '{block['name']}' failed")
+
+                # Serialize
+                if not isinstance(tool_output, str):
+                    tool_output = json.dumps(tool_output, indent=2, default=str)
+
+                # --- Post-tool hooks ---
+                for hook in self._hooks:
+                    hook.post_tool_use(tool_call, tool_output)
+
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block["id"],
+                    "content": tool_output,
+                })
+                result.tool_calls.append({
+                    "tool": block["name"],
+                    "input": block["input"],
+                    "result": tool_output[:500],
+                })
+
+                self._tracer.log_event("tool_call_end", {
+                    "tool": block["name"],
+                    "result_preview": tool_output[:200],
+                })
+
+                logger.info(f"[{self.name}] called {block['name']} -> {tool_output[:100]}")
+
+            # Feed tool results back
+            messages.append({"role": "user", "content": tool_results})
+
+        result.messages = messages
+        result.trace_file = self._tracer.end_run(result)
+        return result

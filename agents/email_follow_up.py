@@ -5,6 +5,7 @@ This file wires shared agency components into the email follow-up workflow.
 All intelligence lives in agency/. This file is just configuration.
 
 Design: Giovanni's three-layer architecture (2026-03-24).
+Aligned: 2026-03-24 — uses Channel-based HITL + EmailProvider interface.
 """
 
 import json
@@ -33,8 +34,7 @@ from agency.tools.tracker import (
     is_already_tracked,
 )
 from agency.tools.classifier import classify_sent_email
-from agency.hooks.hitl.console import ConsoleHITL, create_console_hitl_hook
-from agency.hooks.logger import ToolLogger
+from agency.tracing import JSONTracer
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +83,11 @@ Your job is to execute a structured follow-up workflow in phases. Follow the ins
 Language: {config.voice.language}
 {f"Company context: {config.voice.company_context}" if config.voice.company_context else ""}
 
+## Output Rules
+- NEVER use tables or markdown headers — they don't render on messaging platforms
+- Use bullet points, emojis, and short paragraphs instead
+- Keep messages scannable on a phone screen
+
 ## Important Rules
 1. NEVER send a follow-up without going through the send_follow_up_reply tool (which triggers human approval).
 2. Always check is_already_tracked before creating a new tracked item.
@@ -95,9 +100,14 @@ Language: {config.voice.language}
 {skills_content}"""
 
 
-def create_agent(config_path: str) -> tuple[Agent, AgentConfig]:
-    """Create and configure the email follow-up agent."""
+def create_agent(config_path: str, channel=None) -> tuple[Agent, AgentConfig]:
+    """Create and configure the email follow-up agent.
 
+    Args:
+        config_path: Path to deployment YAML config
+        channel: Optional Channel instance for HITL (ConsoleChannel, SlackChannel, etc.)
+                 If None, no HITL gate is applied.
+    """
     config = load_config(config_path)
 
     # Initialize providers
@@ -137,18 +147,18 @@ def create_agent(config_path: str) -> tuple[Agent, AgentConfig]:
         is_already_tracked,
     ]
 
-    # Setup hooks
-    hitl = ConsoleHITL()
-    tool_logger = ToolLogger(log_file=str(BASE_DIR / "data" / "agent_activity.log"))
+    # Setup hooks — Channel-based HITL
+    hooks = []
+    if channel:
+        from agency.hooks.hitl import ChannelHITL
+        hitl = ChannelHITL(
+            channel=channel,
+            gated_tools=["send_follow_up_reply"],
+        )
+        hooks.append(hitl)
 
-    hooks = {
-        "pre_tool_use": {
-            "send_follow_up_reply": create_console_hitl_hook(hitl),
-        },
-        "post_tool_use": {
-            "*": tool_logger,
-        },
-    }
+    # Tracer
+    tracer = JSONTracer()
 
     agent = Agent(
         name="email-follow-up",
@@ -156,6 +166,7 @@ def create_agent(config_path: str) -> tuple[Agent, AgentConfig]:
         system_prompt=system_prompt,
         tools=tools,
         hooks=hooks,
+        tracer=tracer,
         max_iterations=30,
     )
 
