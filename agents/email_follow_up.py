@@ -50,7 +50,13 @@ def build_system_prompt(config: AgentConfig, skills_content: str) -> str:
         for s in config.follow_up_schedule
     )
 
+    now = datetime.now()
+
     return f"""You are an AI email follow-up agent working for {config.voice.user_name or 'the user'} at {config.voice.company_name or 'their company'}.
+
+## Current Date and Time
+Today is {now.strftime('%A, %B %d, %Y')} ({now.strftime('%Y-%m-%d')}). Current time: {now.strftime('%H:%M')} local time.
+Use this for any date calculations — never ask the user for today's date.
 
 Your job is to execute a structured follow-up workflow in phases. Follow the instructions precisely.
 
