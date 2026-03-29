@@ -1,0 +1,7 @@
+{"event": "run_start", "data": {"agent": "test-agent", "task": "smoke test", "model": "mock"}, "ts": "2026-03-29T20:34:59.454278+00:00"}
+{"event": "llm_call", "data": {"iteration": 1}, "ts": "2026-03-29T20:34:59.454373+00:00"}
+{"event": "tool_call_full", "data": {"tool": "get_invoices", "tool_use_id": "", "input": {"min_days": 1}, "output": "[{\"inv\": \"123\"}]"}, "ts": "2026-03-29T20:34:59.454402+00:00"}
+{"event": "hitl_decision", "data": {"tool": "send_email", "action": "approve", "confidence": 0.92, "confidence_band": "high", "original_draft": null, "edited_text": null, "source": ""}, "ts": "2026-03-29T20:34:59.454428+00:00"}
+{"event": "cost_breakdown", "data": {"iteration": 1, "input_tokens": 100, "output_tokens": 50, "cache_read_tokens": 0, "cost_usd": 0.001, "model": "", "latency_ms": 0.1}, "ts": "2026-03-29T20:34:59.454454+00:00"}
+{"event": "scenario_event", "data": {"action": "advance_clock", "params": {"days": 7}}, "ts": "2026-03-29T20:34:59.454474+00:00"}
+{"event": "run_end", "data": {"iterations": 1, "cost_usd": 0.001, "tool_calls_count": 0, "output_length": 4, "duration_seconds": 0.000407}, "ts": "2026-03-29T20:34:59.454521+00:00"}

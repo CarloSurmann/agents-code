@@ -13,6 +13,7 @@ data/
 __pycache__/
 *.pyc
 .venv/
+.venv2/
 venv/
 *.egg-info/
 

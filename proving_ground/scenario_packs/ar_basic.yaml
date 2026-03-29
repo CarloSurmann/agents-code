@@ -1,0 +1,98 @@
+# AR Follow-Up — Happy Path Scenario
+# Tests basic invoice chasing with three invoices at different overdue stages.
+
+name: ar-basic-happy-path
+description: >
+  Three invoices at different overdue stages (2, 14, 35 days).
+  Agent should send chase emails with appropriate tone for each stage.
+  No mid-run events, no faults — just the happy path.
+
+initial_state:
+  clock: "2026-03-15"
+  company_info:
+    name: "AI Agency Test BV"
+    vat_number: "NL123456789B01"
+    email: "finance@aiagency.example.com"
+    phone: "+31612345678"
+
+  invoices:
+    - invoice_number: "INV-2026-001"
+      customer_name: "BuildRight BV"
+      customer_email: "accounts@buildright.example.com"
+      customer_code: "BR001"
+      amount_gross: 4250.00
+      amount_net: 3512.40
+      currency: "EUR"
+      due_date: "2026-03-13"
+      description: "Consulting services — Q1 2026"
+      language: "nl"
+
+    - invoice_number: "INV-2026-002"
+      customer_name: "TechCorp GmbH"
+      customer_email: "finance@techcorp.example.com"
+      customer_code: "TC001"
+      amount_gross: 12800.00
+      amount_net: 10743.70
+      currency: "EUR"
+      due_date: "2026-03-01"
+      description: "Software license renewal"
+      language: "de"
+
+    - invoice_number: "INV-2026-003"
+      customer_name: "QuickShop Ltd"
+      customer_email: "billing@quickshop.example.com"
+      customer_code: "QS001"
+      amount_gross: 8500.00
+      amount_net: 7024.79
+      currency: "EUR"
+      due_date: "2026-02-08"
+      description: "Maintenance contract — monthly"
+      language: "en"
+
+  contacts:
+    BR001:
+      - name: "Jan de Vries"
+        email: "jan.devries@buildright.example.com"
+        phone: "+31612345001"
+        job_title: "Accounts Payable Manager"
+    TC001:
+      - name: "Hans Mueller"
+        email: "hans.mueller@techcorp.example.com"
+        phone: "+49301234567"
+        job_title: "Finance Director"
+    QS001:
+      - name: "Sarah Johnson"
+        email: "sarah.johnson@quickshop.example.com"
+        phone: "+442012345678"
+        job_title: "Controller"
+
+# No timeline events (happy path — static state)
+timeline: []
+
+agent_config:
+  model: "claude-haiku-4-5-20251001"
+  max_iterations: 15
+  task: >
+    Fetch all overdue invoices and send a chase email for each one.
+    Match the tone to the chase stage based on days overdue.
+    Write in the customer's language.
+
+expected_outcomes:
+  - name: "fetched_invoices"
+    check: "tool_was_called"
+    tool: "get_overdue_invoices"
+
+  - name: "sent_all_emails"
+    check: "emails_sent_count"
+    min: 3
+
+  - name: "no_errors"
+    check: "no_errors"
+
+  - name: "completed_quickly"
+    check: "completed_within"
+    max_iterations: 10
+
+  - name: "cost_reasonable"
+    check: "cost_under"
+    max_usd: 0.10

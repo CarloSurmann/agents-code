@@ -1,0 +1,2 @@
+{"event": "run_start", "data": {"agent": "support-triage", "task": "Process all incoming support emails. For each email:\n1. Read it\n2. Classify it (category, urgency, sentiment)\n3. Log the ticket\n4. Search the knowledge base for an answer\n5. Draft and send a response\n\nAfter processing all emails, run the monitors and generate a health report.", "model": "ollama/qwen3.5"}, "ts": "2026-03-26T13:11:21.734973+00:00"}
+{"event": "llm_call", "data": {"iteration": 1}, "ts": "2026-03-26T13:11:21.735126+00:00"}

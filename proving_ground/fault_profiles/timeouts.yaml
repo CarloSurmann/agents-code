@@ -1,0 +1,16 @@
+name: timeouts
+description: >
+  Simulates intermittent timeouts on external API calls.
+
+rules:
+  - target: "check_payment_status"
+    fault_type: "timeout"
+    probability: 0.4
+    params:
+      message: "Connection timed out after 30 seconds"
+
+  - target: "get_overdue_invoices"
+    fault_type: "slow"
+    probability: 0.5
+    params:
+      delay_seconds: 2

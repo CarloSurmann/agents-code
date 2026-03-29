@@ -1,0 +1,35 @@
+name: combined-chaos
+description: >
+  Everything goes wrong — rate limits, timeouts, errors, slow responses.
+  The ultimate resilience test.
+
+rules:
+  - target: "get_overdue_invoices"
+    fault_type: "error"
+    probability: 0.2
+    after_n_calls: 0
+    max_faults: 1
+    params:
+      message: "Internal server error: database connection lost"
+      code: 500
+
+  - target: "check_payment_status"
+    fault_type: "timeout"
+    probability: 0.3
+    params:
+      message: "Request timed out"
+
+  - target: "send_email"
+    fault_type: "rate_limit"
+    probability: 0.25
+    after_n_calls: 1
+    max_faults: 2
+    params:
+      message: "Rate limit exceeded"
+      retry_after: 60
+
+  - target: "*"
+    fault_type: "slow"
+    probability: 0.1
+    params:
+      delay_seconds: 1

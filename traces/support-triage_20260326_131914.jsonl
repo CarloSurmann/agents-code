@@ -1,0 +1,8 @@
+{"event": "run_start", "data": {"agent": "support-triage", "task": "Process all incoming support emails. For each email:\n1. Read it\n2. Classify it (category, urgency, sentiment)\n3. Log the ticket\n4. Search the knowledge base for an answer\n5. Draft and send a response\n\nAfter processing all emails, run the monitors and generate a health report.", "model": "ollama/qwen3.5"}, "ts": "2026-03-26T13:19:14.589692+00:00"}
+{"event": "llm_call", "data": {"iteration": 1}, "ts": "2026-03-26T13:19:14.589868+00:00"}
+{"event": "tool_call_start", "data": {"tool": "search_support_inbox", "input": {}}, "ts": "2026-03-26T13:23:39.348592+00:00"}
+{"event": "tool_call_end", "data": {"tool": "search_support_inbox", "result_preview": "{\"count\": 10, \"emails\": [{\"message_id\": \"msg-001\", \"from_email\": \"jan@customer.nl\", \"from_name\": \"Jan de Vries\", \"subject\": \"Where is my order #12847?\", \"body_preview\": \"Hi, I placed order #12847 thre"}, "ts": "2026-03-26T13:23:39.350352+00:00"}
+{"event": "llm_call", "data": {"iteration": 2}, "ts": "2026-03-26T13:23:39.350762+00:00"}
+{"event": "tool_call_start", "data": {"tool": "read_support_email", "input": {"message_id": "msg-001"}}, "ts": "2026-03-26T13:28:10.525677+00:00"}
+{"event": "tool_call_end", "data": {"tool": "read_support_email", "result_preview": "{\"message_id\": \"msg-001\", \"from_email\": \"jan@customer.nl\", \"from_name\": \"Jan de Vries\", \"subject\": \"Where is my order #12847?\", \"body\": \"Hi, I placed order #12847 three days ago and still haven't rece"}, "ts": "2026-03-26T13:28:10.528061+00:00"}
+{"event": "llm_call", "data": {"iteration": 3}, "ts": "2026-03-26T13:28:10.528729+00:00"}

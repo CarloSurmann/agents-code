@@ -68,7 +68,20 @@ class ChannelHITL(Hook):
         if tool_call.name not in self.gated_tools:
             return True
 
-        message = self._format_message(tool_call)
+        # Confidence gate may have set skip_hitl (auto-promoted category)
+        if tool_call.metadata.get("skip_hitl"):
+            logger.info(f"HITL: {tool_call.name} → auto-approved (confidence gate)")
+            return True
+
+        # Add low-confidence warning if flagged
+        confidence_prefix = ""
+        if tool_call.metadata.get("low_confidence"):
+            confidence_prefix = "⚠️ LOW CONFIDENCE — Needs careful review\n\n"
+
+        message = confidence_prefix + self._format_message(tool_call)
+
+        # Store original draft in metadata for feedback capture
+        tool_call.metadata["original_draft"] = self._extract_draft(tool_call)
 
         # Run async send_buttons from sync context
         # (agent loop is sync, channels are async)
@@ -87,11 +100,20 @@ class ChannelHITL(Hook):
                 self.channel.send_buttons(message, _APPROVAL_BUTTONS)
             )
 
+        # Write outcome to metadata for FeedbackCapture hook
+        tool_call.metadata["human_action"] = result
+
         approved = result == "approve"
         status = "approved" if approved else f"rejected ({result})"
         logger.info(f"HITL: {tool_call.name} → {status}")
 
         return approved
+
+    def _extract_draft(self, tool_call: ToolCall) -> str:
+        """Extract the draft text from a tool call for feedback tracking."""
+        inputs = tool_call.input
+        # Try common field names for email drafts
+        return inputs.get("body", inputs.get("draft", inputs.get("text", "")))
 
     def _format_message(self, tool_call: ToolCall) -> str:
         """Format a human-readable approval request."""

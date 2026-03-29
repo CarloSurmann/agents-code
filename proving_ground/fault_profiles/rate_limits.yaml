@@ -1,0 +1,23 @@
+name: rate-limits
+description: >
+  Simulates API rate limiting on accounting and email tools.
+  Tests agent resilience when external services throttle requests.
+
+rules:
+  - target: "get_overdue_invoices"
+    fault_type: "rate_limit"
+    probability: 0.3
+    after_n_calls: 1
+    max_faults: 2
+    params:
+      message: "Rate limit exceeded. Retry after 60 seconds."
+      retry_after: 60
+
+  - target: "send_email"
+    fault_type: "rate_limit"
+    probability: 0.2
+    after_n_calls: 2
+    max_faults: 1
+    params:
+      message: "Too many requests. Slow down."
+      retry_after: 30

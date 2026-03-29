@@ -1,0 +1,82 @@
+# AR Follow-Up — Edge Cases
+# Tests: partial payments, disputes, very old invoices, duplicate customers
+
+name: ar-edge-cases
+description: >
+  Mixed invoice states: one partially paid, one disputed, one 90 days overdue.
+  Mid-run events: one invoice gets paid during the run.
+  Tests agent handling of non-standard states.
+
+initial_state:
+  clock: "2026-03-15"
+  company_info:
+    name: "AI Agency Test BV"
+    vat_number: "NL123456789B01"
+    email: "finance@aiagency.example.com"
+
+  invoices:
+    - invoice_number: "INV-2026-010"
+      customer_name: "BuildRight BV"
+      customer_email: "accounts@buildright.example.com"
+      customer_code: "BR001"
+      amount_gross: 10000.00
+      amount_net: 8264.46
+      currency: "EUR"
+      due_date: "2025-12-15"
+      description: "Project delivery milestone 1"
+      language: "nl"
+      # 90 days overdue — final notice territory
+
+    - invoice_number: "INV-2026-011"
+      customer_name: "TechCorp GmbH"
+      customer_email: "finance@techcorp.example.com"
+      customer_code: "TC001"
+      amount_gross: 5000.00
+      amount_net: 4132.23
+      status: "disputed"
+      currency: "EUR"
+      due_date: "2026-02-15"
+      description: "Software license — disputed by customer"
+      language: "de"
+      # Disputed — agent should NOT chase this
+
+    - invoice_number: "INV-2026-012"
+      customer_name: "QuickShop Ltd"
+      customer_email: "billing@quickshop.example.com"
+      customer_code: "QS001"
+      amount_gross: 3000.00
+      amount_net: 2479.34
+      currency: "EUR"
+      due_date: "2026-03-08"
+      description: "Maintenance contract — March"
+      language: "en"
+      # 7 days overdue — firm but warm
+
+timeline:
+  # QuickShop pays their invoice mid-run (after agent fetches but before sending)
+  - at: "T+0"
+    action: mark_paid
+    params:
+      invoice_number: "INV-2026-012"
+
+agent_config:
+  model: "claude-haiku-4-5-20251001"
+  max_iterations: 15
+  task: >
+    Fetch overdue invoices. For each one:
+    - If disputed, flag it and DO NOT send a chase email.
+    - If paid or partially paid, verify before sending.
+    - Otherwise, send an appropriate chase email.
+    Report what you did for each invoice.
+
+expected_outcomes:
+  - name: "fetched_invoices"
+    check: "tool_was_called"
+    tool: "get_overdue_invoices"
+
+  - name: "no_errors"
+    check: "no_errors"
+
+  - name: "completed_quickly"
+    check: "completed_within"
+    max_iterations: 12

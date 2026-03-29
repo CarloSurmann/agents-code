@@ -1,0 +1,52 @@
+# G2 — Customer Support Triage Demo Config
+# Runs entirely on local Ollama — no API keys needed.
+# Uses MockProvider for email — no real email account needed.
+
+name: support-demo
+company_name: "TechWidget BV"
+language: en
+model: "claude-sonnet-4-20250514"
+
+# Email provider (mock for demo, swap to gmail/outlook for prod)
+email_provider: mock
+inbox: "support@techwidget.com"
+
+# Storage
+db_path: "data/support-demo.db"
+feedback_db_path: "data/support-demo-feedback.db"
+
+# Knowledge base
+kb_dir: "knowledge-base/"
+
+# Confidence routing
+confidence_high: 0.85
+confidence_low: 0.60
+auto_promote_streak: 5  # Low for demo (normally 20 in production)
+
+# Business process monitors
+monitors:
+  - id: volume-spike
+    type: volume_spike
+    cron: "*/5 * * * *"
+    config:
+      multiplier: 1.5
+      window_hours: 1
+      baseline_days: 1
+  - id: kb-gaps
+    type: kb_gaps
+    cron: "*/10 * * * *"
+    config:
+      min_occurrences: 2
+      days: 1
+  - id: approval-rate
+    type: response_rate_drop
+    cron: "0 9 * * *"
+    config:
+      threshold: 0.70
+      days: 7
+  - id: draft-quality
+    type: draft_quality_drift
+    cron: "0 9 * * 1"
+    config:
+      max_edit_rate: 0.30
+      days: 7

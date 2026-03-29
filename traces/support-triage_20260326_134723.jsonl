@@ -1,0 +1,16 @@
+{"event": "run_start", "data": {"agent": "support-triage", "task": "Process all incoming support emails. For each email:\n1. Read it fully with read_support_email\n2. Classify it (category, urgency, sentiment)\n3. Log the ticket with log_ticket\n4. Search the knowledge base with search_kb\n5. Draft and send a response with send_support_reply\n\nProcess ONE email at a time. After all emails are done, run run_monitors and get_health_report.", "model": "ollama/qwen3.5"}, "ts": "2026-03-26T13:47:23.290149+00:00"}
+{"event": "llm_call", "data": {"iteration": 1}, "ts": "2026-03-26T13:47:23.290281+00:00"}
+{"event": "tool_call_start", "data": {"tool": "search_support_inbox", "input": {}}, "ts": "2026-03-26T13:48:32.540940+00:00"}
+{"event": "tool_call_end", "data": {"tool": "search_support_inbox", "result_preview": "{\"count\": 3, \"emails\": [{\"message_id\": \"msg-001\", \"from_email\": \"jan@customer.nl\", \"from_name\": \"Jan de Vries\", \"subject\": \"Where is my order #12847?\", \"body_preview\": \"Hi, I placed order #12847 three"}, "ts": "2026-03-26T13:48:32.541816+00:00"}
+{"event": "llm_call", "data": {"iteration": 2}, "ts": "2026-03-26T13:48:32.542191+00:00"}
+{"event": "tool_call_start", "data": {"tool": "read_support_email", "input": {"message_id": "msg-001"}}, "ts": "2026-03-26T13:49:37.851967+00:00"}
+{"event": "tool_call_end", "data": {"tool": "read_support_email", "result_preview": "{\"message_id\": \"msg-001\", \"from_email\": \"jan@customer.nl\", \"from_name\": \"Jan de Vries\", \"subject\": \"Where is my order #12847?\", \"body\": \"Hi, I placed order #12847 three days ago and still haven't rece"}, "ts": "2026-03-26T13:49:37.852511+00:00"}
+{"event": "llm_call", "data": {"iteration": 3}, "ts": "2026-03-26T13:49:37.852807+00:00"}
+{"event": "tool_call_start", "data": {"tool": "log_ticket", "input": {"from_email": "jan@customer.nl", "subject": "Where is my order #12847?", "category": "ORDER_STATUS", "urgency": "medium", "sentiment": "neutral", "kb_matched": false, "kb_query": "order tracking status ETA"}}, "ts": "2026-03-26T13:51:01.310724+00:00"}
+{"event": "tool_call_end", "data": {"tool": "log_ticket", "result_preview": "{\"status\": \"logged\", \"ticket_id\": 1}"}, "ts": "2026-03-26T13:51:01.321968+00:00"}
+{"event": "llm_call", "data": {"iteration": 4}, "ts": "2026-03-26T13:51:01.322260+00:00"}
+{"event": "tool_call_start", "data": {"tool": "search_kb", "input": {"query": "order tracking status ETA shipping confirmation"}}, "ts": "2026-03-26T13:51:58.978632+00:00"}
+{"event": "tool_call_end", "data": {"tool": "search_kb", "result_preview": "{\"matched\": true, \"results\": [{\"title\": \"Tracking Your Order\", \"content\": \"Every order gets a tracking number sent to your email within 24 hours of shipping.\\nYou can track your order at https://track"}, "ts": "2026-03-26T13:51:58.980660+00:00"}
+{"event": "llm_call", "data": {"iteration": 5}, "ts": "2026-03-26T13:51:58.980882+00:00"}
+{"event": "end_turn", "data": {"output_length": 412}, "ts": "2026-03-26T13:54:15.163924+00:00"}
+{"event": "run_end", "data": {"iterations": 5, "cost_usd": 0.0, "tool_calls_count": 4, "output_length": 412, "duration_seconds": 411.874756}, "ts": "2026-03-26T13:54:15.164561+00:00"}

@@ -94,6 +94,7 @@ class ToolCall:
     name: str
     input: dict[str, Any]
     tool_use_id: str
+    metadata: dict[str, Any] = field(default_factory=dict)  # Inter-hook communication (confidence, feedback, etc.)
 
 
 class Hook:
@@ -219,12 +220,24 @@ class _OllamaBackend:
                     if parts:
                         ollama_messages.append({"role": "user", "content": "\n".join(parts)})
 
-        response = self._httpx.post(
-            f"{self.base_url}/api/chat",
-            json={"model": self.model, "messages": ollama_messages, "stream": False},
-            timeout=120.0,
-        )
-        response.raise_for_status()
+        try:
+            response = self._httpx.post(
+                f"{self.base_url}/api/chat",
+                json={"model": self.model, "messages": ollama_messages, "stream": False},
+                timeout=600.0,  # 10 min — larger models need more time on first load
+            )
+            response.raise_for_status()
+        except self._httpx.HTTPStatusError as e:
+            logger.error(f"Ollama returned {e.response.status_code}: {e.response.text[:500]}")
+            # Return a graceful "I need to stop" response instead of crashing
+            return {
+                "content": [{"type": "text", "text": f"[Ollama error: {e.response.status_code}. Context may be too large. Stopping gracefully.]"}],
+                "stop_reason": "end_turn",
+                "cost": 0.0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+            }
+
         data = response.json()
 
         return self._parse_response(data.get("message", {}).get("content", ""))
