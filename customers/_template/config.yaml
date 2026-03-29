@@ -1,0 +1,86 @@
+# =============================================================================
+# Customer Configuration Template
+# =============================================================================
+# Copy this folder to customers/<customer-name>/ and fill in the values.
+# This file drives everything: which agent, which channel, which tools.
+#
+# Usage:
+#   python serve.py --customer <customer-name>
+#   docker run -e CUSTOMER_ID=<customer-name> ai-agency-agent
+# =============================================================================
+
+# --- Identity ----------------------------------------------------------------
+customer_id: "CUSTOMER_ID"          # lowercase-hyphenated (e.g. pizzeria-mario)
+company_name: "COMPANY NAME"
+contact_name: "CONTACT NAME"        # main person we talk to
+language: "italian"                  # agent speaks this language
+
+# --- Workflow ----------------------------------------------------------------
+# Which agent recipe to use. Maps to agents/<workflow>.py
+workflow: "ar-follow-up"            # ar-follow-up | email-follow-up
+
+# --- Model -------------------------------------------------------------------
+model: "claude-sonnet-4-6"        # claude-sonnet-4-6 | claude-haiku-4-5 | ollama/qwen3.5:9b
+
+# --- Channel -----------------------------------------------------------------
+# How the agent communicates with the customer
+channel:
+  type: "whatsapp"                  # whatsapp | teams | telegram | slack | console
+  # Channel-specific settings are loaded from .env (secrets)
+  # For whatsapp: WHATSAPP_PHONE_ID, WHATSAPP_ACCESS_TOKEN, etc.
+  # For teams: TEAMS_APP_ID, TEAMS_APP_PASSWORD, TEAMS_TENANT_ID
+  # For telegram: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+
+# --- Accounting Connector ----------------------------------------------------
+accounting:
+  provider: "fattureincloud"        # fattureincloud | exact_online | none
+  # Credentials loaded from .env:
+  # For fattureincloud: FIC_ACCESS_TOKEN, FIC_COMPANY_ID
+  # For exact_online: EXACT_CLIENT_ID, EXACT_CLIENT_SECRET, etc.
+
+# --- Email -------------------------------------------------------------------
+email:
+  provider: "gmail"                 # gmail | outlook | mock | none
+  user_email: ""                    # the email address the agent sends from
+  # Credentials loaded from .env:
+  # For gmail: GMAIL_CREDENTIALS_PATH, GMAIL_TOKEN_PATH
+  # For outlook: OUTLOOK_CLIENT_ID, OUTLOOK_CLIENT_SECRET, etc.
+
+# --- HITL (Human-in-the-Loop) ------------------------------------------------
+hitl:
+  enabled: true
+  gated_tools:                      # tools that require human approval
+    - "send_email"
+    - "send_follow_up_reply"
+
+# --- Custom Instructions -----------------------------------------------------
+# Appended to the base agent prompt. Use this for company-specific rules,
+# preferences, contacts, and anything unique to this customer.
+custom_instructions: |
+  # Add customer-specific instructions here, for example:
+  # - Always CC owner@company.com on chase emails
+  # - Never chase invoices under €200
+  # - Use informal tone — the owner knows all clients personally
+  # - Special handling: "Client X" always pays late but always pays
+
+# --- Memory ------------------------------------------------------------------
+# The agent accumulates knowledge here across conversations.
+# This file is auto-created on first run.
+memory_file: "memory.md"
+
+# --- Storage -----------------------------------------------------------------
+storage:
+  db_path: "tracker.db"             # SQLite database for follow-up tracking
+
+# --- Follow-Up Schedule (for email-follow-up workflow) -----------------------
+follow_up:
+  schedule:
+    - { number: 1, day_offset: 3,  template: "gentle_check_in" }
+    - { number: 2, day_offset: 7,  template: "add_value" }
+    - { number: 3, day_offset: 14, template: "create_urgency" }
+    - { number: 4, day_offset: 21, template: "graceful_close" }
+
+# --- Voice & Tone ------------------------------------------------------------
+voice:
+  tone: "professional, warm, direct"
+  company_context: ""               # brief description of what the company does
