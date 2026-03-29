@@ -12,6 +12,14 @@ google-auth-httplib2>=0.2.0
 slack-bolt>=1.20.0         # Slack event handling, interactions, modals
 slack-sdk>=3.30.0          # Slack API client
 
+# WhatsApp (Meta Cloud API)
+pywa[fastapi]>=3.0.0       # WhatsApp Cloud API wrapper + FastAPI webhook server
+uvicorn>=0.30.0            # ASGI server for WhatsApp webhooks
+
+# Microsoft Teams bot
+botbuilder-core>=4.16.0    # Bot Framework SDK core
+botbuilder-integration-aiohttp>=4.16.0  # aiohttp adapter for webhook server
+
 # Scheduling
 apscheduler>=3.10.0        # Background cron scheduler
 

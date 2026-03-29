@@ -1,0 +1,54 @@
+# =============================================================================
+# AI Agency — Multi-Customer Docker Compose
+# =============================================================================
+# Add a new service block for each customer. All use the same image,
+# differentiated only by CUSTOMER_ID and their .env file.
+#
+# Usage:
+#   docker-compose up -d                    # start all customers
+#   docker-compose up pizzeria-mario        # start one customer
+#   docker-compose logs -f pizzeria-mario   # view logs
+#   docker-compose down                     # stop all
+#
+# First time:
+#   docker-compose build
+# =============================================================================
+
+services:
+
+  # --- Example customer (uncomment and duplicate for real customers) ----------
+
+  # pizzeria-mario:
+  #   build: .
+  #   command: python serve.py --customer pizzeria-mario
+  #   env_file: customers/pizzeria-mario/.env
+  #   ports:
+  #     - "8080:8080"        # WhatsApp webhook
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ./customers/pizzeria-mario:/app/customers/pizzeria-mario
+
+  # techbuild:
+  #   build: .
+  #   command: python serve.py --customer techbuild
+  #   env_file: customers/techbuild/.env
+  #   ports:
+  #     - "8081:3978"        # Teams webhook
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ./customers/techbuild:/app/customers/techbuild
+
+  # --- Reverse proxy (uncomment for production) ------------------------------
+
+  # nginx:
+  #   image: nginx:alpine
+  #   ports:
+  #     - "443:443"
+  #     - "80:80"
+  #   volumes:
+  #     - ./nginx/conf.d:/etc/nginx/conf.d:ro
+  #     - ./nginx/certs:/etc/nginx/certs:ro
+  #   depends_on:
+  #     - pizzeria-mario
+  #     - techbuild
+  #   restart: unless-stopped
