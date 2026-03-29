@@ -16,12 +16,18 @@ Usage:
     CHANNEL=slack python server.py
 
 Environment variables:
-    CHANNEL              — "telegram" (default), "console", "slack"
+    CHANNEL              — "telegram" (default), "console", "slack", "whatsapp", "teams"
     AGENT_MODEL          — "ollama/qwen3.5:9b" (default) or "claude-sonnet-4-6"
     TELEGRAM_BOT_TOKEN   — from @BotFather
     TELEGRAM_CHAT_ID     — chat ID for the agent
     SLACK_BOT_TOKEN      — Slack bot token
     SLACK_APP_TOKEN      — Slack app token (Socket Mode)
+    WHATSAPP_PHONE_ID    — from Meta Developer dashboard
+    WHATSAPP_ACCESS_TOKEN — permanent token (System User for prod)
+    WHATSAPP_VERIFY_TOKEN — any string (for webhook verification)
+    WHATSAPP_APP_SECRET  — app secret (validates webhook signatures)
+    TEAMS_APP_ID         — Azure Bot registration App ID
+    TEAMS_APP_PASSWORD   — Azure Bot registration password/secret
 """
 
 from __future__ import annotations
@@ -76,10 +82,11 @@ Finding the right email address:
 Communication style:
 - Be concise and clear — this is a chat, not a report
 - Use bullet points and emojis for readability
-- NEVER use tables — they don't render on messaging platforms
-- NEVER use markdown headers (#) — use bold or emojis instead
+- ABSOLUTELY NO TABLES — no pipes (|), no dashes (---), no grid formatting whatsoever. Tables are completely broken on WhatsApp/Telegram. Instead, list each invoice as a short bullet point like:
+  🔴 Fattura 4/2026 — Verde Distribuzione SRL — €7.442 — scaduta da 33gg
+- NEVER use markdown headers (#) — use bold (*text*) or emojis instead
 - Suggest actions but always defer to the owner's judgment
-- When presenting invoices, group by urgency, one per line
+- When presenting invoices, group by urgency, one per line as bullet points
 
 Chase email guidelines:
 - 1-6 days overdue: Friendly reminder. Casual tone.
@@ -109,11 +116,17 @@ def create_channel(channel_type: str):
     elif channel_type == "slack":
         from agency.channels.slack import SlackChannel
         return SlackChannel()
+    elif channel_type == "whatsapp":
+        from agency.channels.whatsapp import WhatsAppChannel
+        return WhatsAppChannel()
+    elif channel_type == "teams":
+        from agency.channels.teams import TeamsChannel
+        return TeamsChannel()
     elif channel_type == "console":
         from agency.channels.console import ConsoleChannel
         return ConsoleChannel()
     else:
-        raise ValueError(f"Unknown channel: {channel_type}. Use: telegram, slack, console")
+        raise ValueError(f"Unknown channel: {channel_type}. Use: telegram, slack, whatsapp, teams, console")
 
 
 # ---------------------------------------------------------------------------
