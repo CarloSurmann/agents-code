@@ -82,6 +82,7 @@ agents-code/
 │   │   └── memory.py              # Per-customer persistent memory
 │   │
 │   ├── skills/                    # AGENT KNOWLEDGE (.md → prompt)
+│   │   ├── universal-prompt-principles.md  # ← EDIT THIS: rules for ALL agents
 │   │   ├── classify_sent_email.md
 │   │   └── draft_follow_up.md
 │   │
@@ -149,6 +150,13 @@ Approve/Edit/Skip button on the channel before sending emails.
 Markdown files loaded into the system prompt. Reusable knowledge
 that any agent can reference.
 
+**Universal Prompt Principles** (`skills/universal-prompt-principles.md`):
+A living document of UX rules that get injected into EVERY agent's system
+prompt automatically. Things like "don't repeat what the user said", "be
+time-aware", "don't over-explain". When you notice an LLM doing something
+annoying, add a principle here and it fixes it for ALL agents at once.
+No code changes needed — just edit the markdown file.
+
 ### Agent Recipes (`agents/`)
 
 Thin wiring files (~30-100 lines) that combine tools + prompt into
@@ -177,6 +185,7 @@ serve.py reads config ──────────────→│
     │   ├── Customer identity
     │   ├── Custom instructions
     │   ├── Memory facts
+    │   ├── Universal principles (agency/skills/universal-prompt-principles.md)
     │   └── Communication rules
     ├── Creates HITL Hook            │
     └── Creates Agent                │
@@ -292,6 +301,42 @@ provides free SSL certificates.
 | Dockerfile | Done | Single image, config-driven |
 | docker-compose | Done | Multi-customer orchestration |
 | Memory system | Done | Per-customer markdown persistence |
+
+---
+
+## Infrastructure & Scaling
+
+### Phase 1: Dev (now)
+Your laptop + ngrok. One process, one tunnel. Fine for testing.
+
+### Phase 2: First Customers (1-5)
+Single Hetzner VPS (4GB, ~€10/month). Docker Compose runs all containers.
+Nginx routes webhooks by subdomain. Let's Encrypt for free SSL.
+
+```
+VPS (4GB RAM)
+├── docker-compose.yaml
+├── Container: customer-a  (~100MB RAM each)
+├── Container: customer-b
+├── Container: nginx (routes + SSL)
+└── Watchtower (auto-pulls image updates)
+```
+
+### Phase 3: Growing (5-30)
+Bigger VPS (16-32GB, ~€30-60/month). Same Docker Compose setup.
+Add monitoring (Uptime Kuma or Grafana). Automated backups.
+
+### Phase 4: Scale (30-100+)
+Managed Kubernetes (Hetzner/DigitalOcean). Multiple nodes.
+Managed Postgres database (replaces per-customer SQLite).
+Secrets management (HashiCorp Vault or cloud-native).
+The agent code doesn't change — only the deployment config.
+
+### Cost Estimate Per Customer
+- VPS share: ~€1-3/month (split across customers)
+- Anthropic API: ~€5-30/month (depends on usage)
+- WhatsApp: free for first 1000 conversations/month, then ~€0.05/msg
+- Total infra cost per customer: ~€10-40/month
 
 ---
 

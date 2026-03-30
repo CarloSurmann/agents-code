@@ -265,6 +265,15 @@ Use this for any date calculations — never ask the user for today's date.
         if memory_content:
             memory_block = f"\n## Agent Memory\nThese are facts you've learned from previous conversations:\n{memory_content}\n"
 
+    # --- Universal principles (loaded from skills file) ---
+    principles_path = ROOT / "agency" / "skills" / "universal-prompt-principles.md"
+    principles_block = ""
+    if principles_path.exists():
+        with open(principles_path, encoding="utf-8") as f:
+            principles_content = f.read().strip()
+        if principles_content:
+            principles_block = f"\n{principles_content}\n"
+
     # --- Communication rules (universal) ---
     comm_rules = """
 ## Communication Rules
@@ -275,7 +284,7 @@ Use this for any date calculations — never ask the user for today's date.
 - Be concise — this is a chat, not a report.
 """
 
-    return base_prompt + identity_block + custom_block + memory_block + comm_rules
+    return base_prompt + identity_block + custom_block + memory_block + principles_block + comm_rules
 
 
 def _ar_follow_up_prompt() -> str:
