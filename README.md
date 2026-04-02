@@ -84,7 +84,8 @@ agents-code/
 │   ├── skills/                    # AGENT KNOWLEDGE (.md → prompt)
 │   │   ├── universal-prompt-principles.md  # ← EDIT THIS: rules for ALL agents
 │   │   ├── classify_sent_email.md
-│   │   └── draft_follow_up.md
+│   │   ├── draft_follow_up.md
+│   │   └── invoice_processing.md
 │   │
 │   └── evals/                     # EVALUATION FRAMEWORK
 │       ├── runner.py
@@ -92,7 +93,8 @@ agents-code/
 │
 ├── agents/                        # AGENT RECIPES (thin wiring files)
 │   ├── ar_follow_up.py            # B1: Invoice chasing
-│   └── email_follow_up.py         # A3: Email follow-up
+│   ├── email_follow_up.py         # A3: Email follow-up
+│   └── supplier_invoice_processing.py  # F1: Supplier invoice processing & matching
 │
 ├── customers/                     # ONE FOLDER PER CUSTOMER
 │   ├── _template/                 # Copy this to onboard a new customer
@@ -290,6 +292,7 @@ provides free SSL certificates.
 |-------|--------|-------|
 | AR Follow-Up (B1) | Done | Invoice chasing, multi-language |
 | Email Follow-Up (A3) | Done | Scan/track/check/follow-up phases |
+| Supplier Invoice Processing (F1) | In Progress | PDF extraction, PO matching, discrepancy detection |
 
 ### Infrastructure
 

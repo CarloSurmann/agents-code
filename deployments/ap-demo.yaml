@@ -1,0 +1,43 @@
+# F1 — Supplier Invoice Processing Demo Config
+# Uses MockProvider for email — no real email account needed.
+# Synthetic PO data loaded by test harness.
+
+name: ap-demo
+company_name: "IndustrialParts BV"
+language: en
+model: "claude-haiku-4-5-20251001"
+
+# Email provider (mock for demo)
+email_provider: mock
+inbox: "ap@industrialparts.com"
+
+# Storage
+db_path: "data/ap-demo.db"
+feedback_db_path: "data/ap-demo-feedback.db"
+
+# AP-specific thresholds
+auto_approve_threshold: 2000      # EUR — auto-approve matched invoices under this
+escalation_threshold: 10000       # EUR — always escalate above this
+price_tolerance_pct: 2.0          # % — price variance tolerance for matching
+currency: "EUR"
+
+# Confidence routing
+confidence_high: 0.85
+confidence_low: 0.60
+auto_promote_streak: 5  # Low for demo (normally 20 in production)
+
+# Business process monitors
+monitors:
+  - id: volume-spike
+    type: volume_spike
+    cron: "*/5 * * * *"
+    config:
+      multiplier: 1.5
+      window_hours: 1
+      baseline_days: 1
+  - id: approval-rate
+    type: response_rate_drop
+    cron: "0 9 * * *"
+    config:
+      threshold: 0.70
+      days: 7

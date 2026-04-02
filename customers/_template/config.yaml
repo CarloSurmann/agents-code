@@ -17,7 +17,7 @@ language: "italian"                  # agent speaks this language
 
 # --- Workflow ----------------------------------------------------------------
 # Which agent recipe to use. Maps to agents/<workflow>.py
-workflow: "ar-follow-up"            # ar-follow-up | email-follow-up
+workflow: "ar-follow-up"            # ar-follow-up | email-follow-up | supplier-invoice-processing
 
 # --- Model -------------------------------------------------------------------
 model: "claude-sonnet-4-6"        # claude-sonnet-4-6 | claude-haiku-4-5 | ollama/qwen3.5:9b

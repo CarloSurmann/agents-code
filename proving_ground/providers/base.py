@@ -76,6 +76,56 @@ class ProviderState:
     extra: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
+class PurchaseOrder:
+    """A purchase order from the accounting/ERP system."""
+    po_number: str
+    supplier_name: str
+    supplier_code: str = ""
+    order_date: date | None = None
+    total_amount: float = 0.0
+    currency: str = "EUR"
+    status: str = "open"  # open, partially_invoiced, fully_invoiced, cancelled
+    line_items: list[dict] = field(default_factory=list)
+    # Each line_item: {"description": str, "quantity": float, "unit_price": float, "line_total": float}
+    cumulative_invoiced: float = 0.0  # total already invoiced against this PO
+
+
+@dataclass
+class SupplierInvoiceData:
+    """Extracted data from a supplier invoice PDF (what Claude vision would return)."""
+    message_id: str  # links to the email
+    extraction_confidence: float = 0.95
+
+    # Header
+    supplier_name: str = ""
+    supplier_vat: str = ""
+    supplier_address: str = ""
+    invoice_number: str = ""
+    invoice_date: str = ""  # ISO format
+    due_date: str = ""
+    payment_terms: str = ""
+    po_reference: str | None = None
+    currency: str = "EUR"
+
+    # Line items
+    line_items: list[dict] = field(default_factory=list)
+    # Each: {"description": str, "quantity": float, "unit_price": float, "vat_rate": float, "line_total": float}
+
+    # Totals
+    subtotal: float = 0.0
+    vat_amount: float = 0.0
+    total_amount: float = 0.0
+
+    # Payment
+    iban: str = ""
+    bic: str = ""
+    payment_reference: str = ""
+
+    # Test metadata
+    scenario_type: str = ""  # EXACT_MATCH, PRICE_DISCREPANCY, QTY_DISCREPANCY, NO_PO, DUPLICATE, CREDIT_NOTE, NEW_SUPPLIER
+
+
 class AccountingProvider(ABC):
     """Abstract base class for accounting providers.
 
